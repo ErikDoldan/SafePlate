@@ -1,98 +1,144 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import { CameraView, useCameraPermissions } from 'expo-camera';
+import { useState } from 'react';
+import { ActivityIndicator, Button, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+type ResultadoProducto = {
+  nombre: string;
+  seguro: boolean | null;
+  ingredientes?: string;
+};
 
-export default function HomeScreen() {
+export default function ProductosScreen() {
+  const [permission, requestPermission] = useCameraPermissions();
+  const [escaneando, setEscaneando] = useState(true);
+  const [resultado, setResultado] = useState<ResultadoProducto | null>(null);
+  const [cargando, setCargando] = useState(false);
+
+  if (!permission) return <View />;
+  if (!permission.granted) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.textoCentro}>Necesitamos permiso para la cámara.</Text>
+        <Button onPress={requestPermission} title="Dar permiso" />
+      </View>
+    );
+  }
+
+const analizarIngredientes = (textoIngredientes: string) => {
+    if (!textoIngredientes) return null;
+    const textoBajo = textoIngredientes.toLowerCase();
+
+    // 1. Si el fabricante pone "sin gluten" explícitamente, es SEGURO
+    if (textoBajo.includes('sin gluten') || textoBajo.includes('gluten free') || textoBajo.includes('sno gluten')) {
+      return true; 
+    }
+
+    // 2. Si no lo pone, buscamos las palabras prohibidas
+    const palabrasProhibidas = ['trigo', 'wheat', 'cebada', 'barley', 'centeno', 'rye', 'avena', 'oats', 'gluten'];
+    
+    // Filtramos para evitar detectar "almidón de trigo SIN GLUTEN" como malo
+    const contieneGluten = palabrasProhibidas.some(palabra => {
+      const posicion = textoBajo.indexOf(palabra);
+      if (posicion === -1) return false;
+      
+      // Miramos los 15 caracteres anteriores a la palabra (por si pone "sin" o "free")
+      const fragmentoAnterior = textoBajo.substring(posicion - 15, posicion);
+      if (fragmentoAnterior.includes('sin') || fragmentoAnterior.includes('free')) {
+        return false; 
+      }
+      return true;
+    });
+
+    return !contieneGluten;
+  };
+
+  const handleBarcodeScanned = async ({ data }: { data: string }) => {
+    setEscaneando(false);
+    setCargando(true);
+    
+    try {
+      // 1. Consultamos la base de datos mundial de Open Food Facts
+      const respuesta = await fetch(`https://world.openfoodfacts.org/api/v2/product/${data}.json`);
+      const json = await respuesta.json();
+
+      if (json.status === 1) {
+        const p = json.product;
+        const nombre = p.product_name || "Producto sin nombre";
+        const ingredientes = p.ingredients_text || "";
+        
+        // 2. Analizamos si es seguro basándonos en los ingredientes
+        const esSeguro = analizarIngredientes(ingredientes);
+
+        setResultado({
+          nombre: nombre,
+          seguro: esSeguro,
+          ingredientes: ingredientes
+        });
+      } else {
+        setResultado({ nombre: "No encontrado en la red mundial", seguro: null });
+      }
+    } catch (error) {
+      setResultado({ nombre: "Error de conexión", seguro: null });
+    }
+
+    setCargando(false);
+  };
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
+    <View style={styles.container}>
+      {escaneando ? (
+        <CameraView
+          style={StyleSheet.absoluteFillObject}
+          facing="back"
+          onBarcodeScanned={handleBarcodeScanned}
+          barcodeScannerSettings={{ barcodeTypes: ["ean13", "ean8"] }}
         />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+      ) : (
+        <View style={styles.tarjetaResultado}>
+          {cargando ? (
+            <ActivityIndicator size="large" color="#2196F3" />
+          ) : (
+            <ScrollView contentContainerStyle={{ alignItems: 'center' }}>
+              <Text style={styles.tituloProducto}>{resultado?.nombre}</Text>
+              
+              {resultado?.seguro === true && (
+                <Text style={[styles.estado, { backgroundColor: '#4CAF50' }]}>✅ PARECE SEGURO</Text>
+              )}
+              {resultado?.seguro === false && (
+                <Text style={[styles.estado, { backgroundColor: '#F44336' }]}>❌ CONTIENE GLUTEN</Text>
+              )}
+              {resultado?.seguro === null && (
+                <Text style={[styles.estado, { backgroundColor: '#9E9E9E' }]}>⚠️ DESCONOCIDO</Text>
+              )}
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+              {resultado?.ingredientes && (
+                <Text style={styles.textoIngredientes}>
+                  <Text style={{fontWeight: 'bold'}}>Ingredientes detectados:</Text> {"\n"}
+                  {resultado.ingredientes.substring(0, 200)}...
+                </Text>
+              )}
+
+              <TouchableOpacity 
+                style={styles.botonEscanear} 
+                onPress={() => { setResultado(null); setEscaneando(true); }}
+              >
+                <Text style={styles.textoBoton}>Escanear otro</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          )}
+        </View>
+      )}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
-  },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
-  },
+  container: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' },
+  textoCentro: { color: 'white', textAlign: 'center', marginBottom: 20 },
+  tarjetaResultado: { backgroundColor: 'white', padding: 25, borderRadius: 20, width: '85%', maxHeight: '80%', elevation: 10 },
+  tituloProducto: { fontSize: 22, fontWeight: 'bold', marginBottom: 15, textAlign: 'center' },
+  estado: { color: 'white', padding: 12, borderRadius: 10, fontSize: 16, fontWeight: 'bold', textAlign: 'center', width: '100%', marginBottom: 15 },
+  textoIngredientes: { fontSize: 13, color: '#666', marginBottom: 20, fontStyle: 'italic' },
+  botonEscanear: { backgroundColor: '#2196F3', padding: 15, borderRadius: 10, width: '100%', alignItems: 'center' },
+  textoBoton: { color: 'white', fontWeight: 'bold' }
 });
