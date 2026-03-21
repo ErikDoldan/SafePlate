@@ -1,6 +1,8 @@
+import { Ionicons } from '@expo/vector-icons'; // <-- Iconos Premium
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import * as Haptics from 'expo-haptics'; // <-- Haptics para vibración premium
 import { useState } from 'react';
-import { ActivityIndicator, Button, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { supabase } from '../../supabase';
 
 type ResultadoProducto = {
@@ -15,20 +17,33 @@ export default function ProductosScreen() {
   const [escaneando, setEscaneando] = useState(true);
   const [resultado, setResultado] = useState<ResultadoProducto | null>(null);
   const [cargando, setCargando] = useState(false);
-  
-  // NUEVO: Memoria para saber qué código estamos viendo y poder corregirlo
   const [codigoActual, setCodigoActual] = useState<string | null>(null);
 
-  if (!permission) return <View />;
-  if (!permission.granted) {
+  // --- SOLUCIÓN: PANTALLA DE PERMISOS PERFECTAMENTE CENTRADA ---
+  if (!permission || !permission.granted) {
     return (
-      <View style={styles.container}>
-        <Text style={styles.textoCentro}>Necesitamos permiso para la cámara.</Text>
-        <Button onPress={requestPermission} title="Dar permiso" />
+      <View style={styles.fondoGrisCentro}>
+        <View style={styles.tarjetaModernaPermiso}>
+          <View style={styles.contenedorIconoGrande}>
+            {/* Logo de la cámara grande, minimalista y perfectamente centrado */}
+            <Ionicons name="scan-circle-outline" size={100} color="#10B981" />
+          </View>
+          
+          <Text style={styles.tituloPermiso}>¡Vamos a escanear!</Text>
+          <Text style={styles.textoCentroPermiso}>
+            Necesitamos acceso a tu cámara para leer los códigos de barras de los productos y verificar si son seguros.
+          </Text>
+          
+          <TouchableOpacity style={styles.botonPrimario} onPress={requestPermission}>
+            <Text style={styles.textoBoton}>Dar permiso</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     );
   }
+  // -----------------------------------------------------------
 
+  // --- TU LÓGICA ORIGINAL (INTACTA) ---
   const analizarIngredientes = (texto: string) => {
     if (!texto) return null;
     const t = texto.toLowerCase();
@@ -48,12 +63,12 @@ export default function ProductosScreen() {
   };
 
   const handleBarcodeScanned = async ({ data }: { data: string }) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); // Vibración al detectar
     setEscaneando(false);
     setCargando(true);
-    setCodigoActual(data); // Guardamos el código escaneado
+    setCodigoActual(data); 
     
     try {
-      // 1. Miramos en TU base de datos primero
       const { data: local, error: supabaseError } = await supabase
         .from('productos')
         .select('*')
@@ -62,8 +77,8 @@ export default function ProductosScreen() {
 
       if (local) {
         setResultado({ nombre: local.nombre, seguro: local.seguro, fuente: 'Tu Base de Datos' });
+        lanzaVibracion(local.seguro);
       } else {
-        // 2. Si no está, vamos a la red mundial
         const res = await fetch(`https://world.openfoodfacts.org/api/v2/product/${data}.json`);
         const json = await res.json();
 
@@ -91,22 +106,31 @@ export default function ProductosScreen() {
             ingredientes: ingredientsText,
             fuente: 'Red Mundial'
           });
+          lanzaVibracion(esSeguro);
         } else {
           setResultado({ nombre: "No encontrado en la red", seguro: null });
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
         }
       }
     } catch (e) {
       setResultado({ nombre: "Error de red", seguro: null });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     }
     setCargando(false);
   };
 
-  // NUEVO: Función para corregir la base de datos desde el móvil
+  const lanzaVibracion = (esSeguro: boolean | null) => {
+    if (esSeguro === true) Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    else if (esSeguro === false) Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    else Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+  };
+
+  // --- TU LÓGICA DE CORRECCIÓN (INTACTA) ---
   const guardarCorreccion = async (esSeguro: boolean) => {
     if (!codigoActual) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setCargando(true);
     
-    // Upsert significa: "Si no existe, créalo. Si existe, actualízalo"
     const { error } = await supabase
       .from('productos')
       .upsert({ 
@@ -116,48 +140,81 @@ export default function ProductosScreen() {
       });
 
     if (!error) {
-      // Actualizamos la pantalla inmediatamente
       setResultado(prev => prev ? { ...prev, seguro: esSeguro, fuente: 'Tu Base de Datos (Corregido)' } : null);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } else {
       console.log("Error guardando:", error);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     }
     setCargando(false);
   };
 
   return (
-    <View style={styles.container}>
+    <View style={styles.fondoGris}>
       {escaneando ? (
-        <CameraView style={StyleSheet.absoluteFillObject} onBarcodeScanned={handleBarcodeScanned} />
+        <View style={styles.contenedorCamara}>
+          <CameraView style={StyleSheet.absoluteFillObject} onBarcodeScanned={handleBarcodeScanned} barcodeScannerSettings={{ barcodeTypes: ["ean13", "ean8", "qr"] }} />
+          {/* Overlay decorativo de escáner */}
+          <View style={styles.marcoEscaner}>
+            <Ionicons name="scan-outline" size={250} color="rgba(255,255,255,0.6)" />
+          </View>
+        </View>
       ) : (
-        <View style={styles.tarjeta}>
-          {cargando ? <ActivityIndicator size="large" color="#2196F3" /> : (
-            <ScrollView showsVerticalScrollIndicator={false}>
-              <Text style={styles.fuente}>{resultado?.fuente}</Text>
-              <Text style={styles.titulo}>{resultado?.nombre}</Text>
+        <View style={styles.tarjetaModerna}>
+          {cargando ? <ActivityIndicator size="large" color="#10B981" style={{marginVertical: 40}} /> : (
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{alignItems: 'center'}}>
               
-              <View style={[styles.badge, { backgroundColor: resultado?.seguro ? '#4CAF50' : (resultado?.seguro === false ? '#F44336' : '#9E9E9E') }]}>
-                <Text style={styles.badgeText}>
-                  {resultado?.seguro ? '✅ SEGURO' : (resultado?.seguro === false ? '❌ CON GLUTEN' : '⚠️ DESCONOCIDO')}
-                </Text>
+              <View style={styles.fuenteBadge}>
+                <Ionicons name="cloud-done-outline" size={12} color="#6B7280" style={{marginRight: 4}}/>
+                <Text style={styles.fuenteTexto}>{resultado?.fuente}</Text>
               </View>
 
-              {/* BOTONES DE MODO DIOS (SOLO APARECEN SI EL PRODUCTO NO VIENE DE TU BASE DE DATOS) */}
+              <Text style={styles.titulo}>{resultado?.nombre}</Text>
+              
+              {/* BADGES PREMIUM */}
+              {resultado?.seguro === true && (
+                <View style={[styles.estadoBadge, { backgroundColor: '#D1FAE5' }]}>
+                  <Ionicons name="checkmark-circle" size={24} color="#10B981" />
+                  <Text style={[styles.badgeText, { color: '#10B981' }]}>SEGURO</Text>
+                </View>
+              )}
+              {resultado?.seguro === false && (
+                <View style={[styles.estadoBadge, { backgroundColor: '#FEE2E2' }]}>
+                  <Ionicons name="warning" size={24} color="#EF4444" />
+                  <Text style={[styles.badgeText, { color: '#EF4444' }]}>CONTIENE GLUTEN</Text>
+                </View>
+              )}
+              {resultado?.seguro === null && (
+                <View style={[styles.estadoBadge, { backgroundColor: '#F3F4F6' }]}>
+                  <Ionicons name="help-circle" size={24} color="#6B7280" />
+                  <Text style={[styles.badgeText, { color: '#6B7280' }]}>DESCONOCIDO</Text>
+                </View>
+              )}
+
+              {/* ZONA DE CORRECCIÓN MEJORADA */}
               {resultado?.fuente !== 'Tu Base de Datos' && resultado?.fuente !== 'Tu Base de Datos (Corregido)' && (
                 <View style={styles.zonaCorreccion}>
-                  <Text style={styles.textoCorreccion}>¿La información es incorrecta?</Text>
+                  <Text style={styles.textoCorreccion}>¿Información incorrecta? Ayuda a la comunidad:</Text>
                   <View style={styles.botonesFila}>
-                    <TouchableOpacity style={[styles.botonCorregir, { backgroundColor: '#4CAF50' }]} onPress={() => guardarCorreccion(true)}>
-                      <Text style={styles.textoBotonChico}>✅ Marcar Seguro</Text>
+                    <TouchableOpacity style={[styles.botonCorregir, { backgroundColor: '#D1FAE5' }]} onPress={() => guardarCorreccion(true)}>
+                      <Ionicons name="checkmark" size={16} color="#10B981" />
+                      <Text style={[styles.textoBotonChico, {color: '#10B981'}]}>Es Seguro</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity style={[styles.botonCorregir, { backgroundColor: '#F44336' }]} onPress={() => guardarCorreccion(false)}>
-                      <Text style={styles.textoBotonChico}>❌ Marcar Peligro</Text>
+                    <TouchableOpacity style={[styles.botonCorregir, { backgroundColor: '#FEE2E2' }]} onPress={() => guardarCorreccion(false)}>
+                      <Ionicons name="close" size={16} color="#EF4444" />
+                      <Text style={[styles.textoBotonChico, {color: '#EF4444'}]}>Peligro</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
               )}
 
-              <TouchableOpacity style={styles.boton} onPress={() => { setResultado(null); setEscaneando(true); }}>
-                <Text style={styles.btnText}>ESCANEAR OTRO</Text>
+              <TouchableOpacity style={styles.botonPrimario} onPress={() => { 
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setResultado(null); 
+                setEscaneando(true); 
+              }}>
+                <Ionicons name="barcode-outline" size={20} color="white" style={{marginRight: 8}} />
+                <Text style={styles.textoBoton}>Escanear otro</Text>
               </TouchableOpacity>
             </ScrollView>
           )}
@@ -167,19 +224,53 @@ export default function ProductosScreen() {
   );
 }
 
+// ESTILOS PREMIUM UNIFICADOS
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' },
-  tarjeta: { backgroundColor: 'white', padding: 25, borderRadius: 20, width: '85%', maxHeight: '85%' },
-  fuente: { fontSize: 10, color: '#aaa', textAlign: 'center', textTransform: 'uppercase' },
-  titulo: { fontSize: 20, fontWeight: 'bold', marginVertical: 15, textAlign: 'center' },
-  badge: { padding: 15, borderRadius: 10, alignItems: 'center', marginBottom: 15 },
-  badgeText: { color: 'white', fontWeight: 'bold', fontSize: 18 },
-  boton: { marginTop: 20, backgroundColor: '#2196F3', padding: 15, borderRadius: 10, alignItems: 'center' },
-  btnText: { color: 'white', fontWeight: 'bold' },
-  textoCentro: { color: 'white' },
-  zonaCorreccion: { marginTop: 15, padding: 15, backgroundColor: '#f0f0f0', borderRadius: 10 },
-  textoCorreccion: { textAlign: 'center', color: '#666', marginBottom: 10, fontSize: 12 },
+  fondoGris: { flex: 1, backgroundColor: '#F8F9FA', justifyContent: 'center', alignItems: 'center' },
+  fondoGrisCentro: { flex: 1, backgroundColor: '#F8F9FA', justifyContent: 'center', alignItems: 'center', padding: 20 },
+  contenedorCamara: { flex: 1, width: '100%', justifyContent: 'center', alignItems: 'center' },
+  marcoEscaner: { justifyContent: 'center', alignItems: 'center', flex: 1 },
+  tarjetaModernaPermiso: {
+    backgroundColor: '#FFFFFF',
+    padding: 30,
+    borderRadius: 24,
+    alignItems: 'center',
+    width: '90%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.08,
+    shadowRadius: 20,
+    elevation: 5,
+  },
+  contenedorIconoGrande: { marginBottom: 30, marginTop: 10 },
+  tituloPermiso: { fontSize: 24, fontWeight: '800', color: '#1F2937', marginBottom: 15, textAlign: 'center' },
+  textoCentroPermiso: { textAlign: 'center', marginBottom: 30, fontSize: 16, color: '#6B7280', lineHeight: 24 },
+  tarjetaModerna: {
+    backgroundColor: '#FFFFFF',
+    padding: 24,
+    borderRadius: 24,
+    width: '85%',
+    maxHeight: '85%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.08,
+    shadowRadius: 20,
+    elevation: 5,
+  },
+  fuenteBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F3F4F6', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, marginBottom: 12 },
+  fuenteTexto: { fontSize: 10, color: '#6B7280', textTransform: 'uppercase', fontWeight: 'bold' },
+  titulo: { fontSize: 22, fontWeight: '800', marginVertical: 10, textAlign: 'center', color: '#1F2937' },
+  estadoBadge: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 20, borderRadius: 100, marginBottom: 20 },
+  badgeText: { fontWeight: '800', fontSize: 16, marginLeft: 8 },
+  botonPrimario: { 
+    flexDirection: 'row', backgroundColor: '#10B981', paddingVertical: 16, paddingHorizontal: 32, 
+    borderRadius: 16, alignItems: 'center', width: '100%', justifyContent: 'center',
+    shadowColor: '#10B981', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8
+  },
+  textoBoton: { color: 'white', fontWeight: 'bold', fontSize: 16 },
+  zonaCorreccion: { width: '100%', marginTop: 10, padding: 16, backgroundColor: '#F8F9FA', borderRadius: 16, marginBottom: 20, borderWidth: 1, borderColor: '#E5E7EB' },
+  textoCorreccion: { textAlign: 'center', color: '#6B7280', marginBottom: 12, fontSize: 13, fontWeight: '600' },
   botonesFila: { flexDirection: 'row', justifyContent: 'space-between' },
-  botonCorregir: { flex: 1, padding: 10, borderRadius: 8, alignItems: 'center', marginHorizontal: 5 },
-  textoBotonChico: { color: 'white', fontWeight: 'bold', fontSize: 12 }
+  botonCorregir: { flex: 1, flexDirection: 'row', paddingVertical: 10, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginHorizontal: 4 },
+  textoBotonChico: { fontWeight: 'bold', fontSize: 13, marginLeft: 4 }
 });
