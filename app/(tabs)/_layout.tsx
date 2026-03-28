@@ -43,6 +43,7 @@ export default function TabLayout() {
           name="descubre" 
           options={{ 
             title: 'Descubre',
+            headerShown: false,
             tabBarIcon: ({ color }) => <Ionicons name="compass-outline" size={28} color={color} />
           }} 
         />
@@ -64,7 +65,16 @@ export default function TabLayout() {
           name="tarjetas" 
           options={{ 
             title: 'Tarjetas',
-            tabBarIcon: ({ color }) => <Ionicons name="card-outline" size={26} color={color} />
+            headerShown: false, // <--- Añade esto
+            tabBarIcon: ({ color }) => <Ionicons name="card-outline" size={28} color={color} />
+          }} 
+        />
+        <Tabs.Screen 
+          name="perfil" 
+          options={{ 
+            title: 'Perfil',
+            headerShown: false,
+            tabBarIcon: ({ color }) => <Ionicons name="person-outline" size={28} color={color} />
           }} 
         />
       </Tabs>

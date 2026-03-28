@@ -1,168 +1,171 @@
-import { Ionicons } from '@expo/vector-icons'; // <-- Los iconos
-import * as Haptics from 'expo-haptics'; // <-- La vibración premium
-import React from 'react';
-import { FlatList, Image, Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
+import React, { useState } from 'react';
+import { Dimensions, FlatList, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
-// 1. Definimos qué datos tiene una Tarjeta
-type Tarjeta = {
-  id: string;
-  idioma: string;
-  descripcion: string;
-  precio: string;
-  imagen: string;
-  linkPago: string;
+const { width } = Dimensions.get('window');
+
+// 1. Diccionario de traducciones (¡Tu app ahora es políglota!)
+const TRADUCCIONES = {
+  es: {
+    id: 'es',
+    idioma: 'Español',
+    alerta: 'ALERTA MÉDICA',
+    titulo: 'Soy Celíaco/a',
+    mensaje: 'Tengo la enfermedad celíaca y sigo una dieta estricta sin gluten. \n\nPor favor, mi comida no puede contener trigo, centeno, cebada ni avena. \n\nIncluso una pequeña cantidad de contaminación cruzada (usar la misma sartén, aceite o cuchillo) me hará enfermar gravemente. \n\n¿Pueden prepararme algo seguro?',
+    gracias: '¡Muchas gracias por su ayuda!'
+  },
+  en: {
+    id: 'en',
+    idioma: 'English',
+    alerta: 'MEDICAL ALERT',
+    titulo: 'I have Celiac Disease',
+    mensaje: 'I have celiac disease and must follow a strict gluten-free diet. \n\nMy food cannot contain any wheat, rye, barley, or oats. \n\nEven a small amount of cross-contamination (using the same pan, oil, or knife) will make me very sick. \n\nCan you prepare a safe meal for me?',
+    gracias: 'Thank you for your help!'
+  },
+  it: {
+    id: 'it',
+    idioma: 'Italiano',
+    alerta: 'ALLARME MEDICO',
+    titulo: 'Sono Celiaco/a',
+    mensaje: 'Soffro di celiachia e devo seguire una rigorosa dieta senza glutine. \n\nIl mio cibo non deve contenere grano, segale, orzo o avena. \n\nAnche una minima contaminazione crociata (usando la stessa padella, olio o coltello) mi farà stare molto male. \n\nPotete prepararmi un pasto sicuro?',
+    gracias: 'Grazie mille per l\'aiuto!'
+  },
+  al: {
+    id: 'al',
+    idioma: 'Shqip', // Albanés
+    alerta: 'ALARM MJEKËSOR',
+    titulo: 'Unë jam Celiak',
+    mensaje: 'Unë kam sëmundjen e celiakisë dhe duhet të ndjek një dietë strikte pa gluten. \n\nUshqimi im nuk duhet të përmbajë grurë, thekër, elb ose tërshërë. \n\nEdhe një sasi e vogël e kontaminimit të kryqëzuar (përdorimi i të njëjtit tigan, vaj ose thikë) do të më bëjë shumë të sëmurë. \n\nA mund të përgatisni një vakt të sigurt për mua?',
+    gracias: 'Faleminderit shumë për ndihmën tuaj!'
+  }
 };
 
-// 2. Nuestro catálogo (he añadido una breve descripción para que quede más pro)
-const catalogoTarjetas: Tarjeta[] = [
-  {
-    id: '1',
-    idioma: 'Tarjeta en Japonés',
-    descripcion: 'Traducción nativa garantizada. Ideal para sushi, ramen y comida callejera.',
-    precio: '3,99€',
-    imagen: 'https://images.unsplash.com/photo-1528164344705-47542687000d?w=500&q=80',
-    linkPago: 'https://www.google.com' // Tu link de Stripe irá aquí
-  },
-  {
-    id: '2',
-    idioma: 'Tarjeta en Inglés',
-    descripcion: 'Válida para EEUU, Reino Unido, Australia y más. Universal y segura.',
-    precio: '3,99€',
-    imagen: 'https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?w=500&q=80',
-    linkPago: 'https://www.google.com'
-  },
-];
+const IDIOMAS = Object.values(TRADUCCIONES);
 
 export default function TarjetasScreen() {
+  // Estado para saber qué idioma está seleccionado (por defecto español)
+  const [idiomaActivo, setIdiomaActivo] = useState<keyof typeof TRADUCCIONES>('es');
 
-  // 3. Función de compra con vibración
-  const comprarTarjeta = (link: string) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); // Vibración al "comprar"
-    Linking.openURL(link);
+  const cambiarIdioma = (id: keyof typeof TRADUCCIONES) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setIdiomaActivo(id);
   };
 
-  // 4. Diseño de la Tarjeta Flotante
-  const renderItem = ({ item }: { item: Tarjeta }) => (
-    <View style={styles.tarjetaModerna}>
-      <Image source={{ uri: item.imagen }} style={styles.imagenTarjeta} />
-      
-      <View style={styles.infoContenedor}>
-        <View style={styles.filaTitulo}>
-          <Text style={styles.tituloTarjeta}>{item.idioma}</Text>
-          <View style={styles.badgePrecio}>
-            <Text style={styles.textoPrecio}>{item.precio}</Text>
-          </View>
-        </View>
-
-        <Text style={styles.descripcionTarjeta}>{item.descripcion}</Text>
-        
-        <TouchableOpacity 
-          style={styles.botonPrimario} 
-          onPress={() => comprarTarjeta(item.linkPago)}
-        >
-          <Ionicons name="cloud-download-outline" size={20} color="white" style={{marginRight: 8}} />
-          <Text style={styles.textoBoton}>Descargar PDF</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
+  const datos = TRADUCCIONES[idiomaActivo];
 
   return (
-    <View style={styles.fondoGris}>
-      <FlatList
-        data={catalogoTarjetas}
-        keyExtractor={(item) => item.id}
-        renderItem={renderItem}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingVertical: 20 }}
-        ListHeaderComponent={() => (
-          <View style={styles.headerContenedor}>
-            <Text style={styles.subtituloHeader}>Viaja seguro. Enseña tu tarjeta al camarero en su idioma y evita la contaminación cruzada.</Text>
+    <View style={styles.contenedor}>
+      {/* CABECERA */}
+      <View style={styles.cabecera}>
+        <Text style={styles.tituloPantalla}>Mi Tarjeta</Text>
+        <Text style={styles.subtituloPantalla}>Muéstrale esto al camarero</Text>
+      </View>
+
+      {/* SELECTOR DE IDIOMAS */}
+      <View style={styles.contenedorFiltros}>
+        <FlatList
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          data={IDIOMAS}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={{ paddingHorizontal: 20 }}
+          renderItem={({ item }) => (
+            <TouchableOpacity 
+              style={[styles.chipIdioma, idiomaActivo === item.id && styles.chipActivo]}
+              onPress={() => cambiarIdioma(item.id as keyof typeof TRADUCCIONES)}
+            >
+              <Text style={[styles.textoChip, idiomaActivo === item.id && styles.textoChipActivo]}>
+                {item.idioma}
+              </Text>
+            </TouchableOpacity>
+          )}
+        />
+      </View>
+
+      {/* LA TARJETA DEL RESTAURANTE */}
+      <ScrollView contentContainerStyle={styles.scrollTarjeta} showsVerticalScrollIndicator={false}>
+        <View style={styles.tarjetaFisica}>
+          
+          {/* Banda roja superior de emergencia */}
+          <View style={styles.bandaAlerta}>
+            <Ionicons name="warning" size={24} color="white" />
+            <Text style={styles.textoAlerta}>{datos.alerta}</Text>
+            <Ionicons name="warning" size={24} color="white" />
           </View>
-        )}
-      />
+
+          {/* Contenido de la tarjeta */}
+          <View style={styles.cuerpoTarjeta}>
+            <Text style={styles.tituloTarjeta}>{datos.titulo}</Text>
+            
+            <View style={styles.separador} />
+            
+            <Text style={styles.mensajeTarjeta}>{datos.mensaje}</Text>
+            
+            <View style={styles.cajaGracias}>
+              <Ionicons name="heart" size={20} color="#EF4444" style={{ marginRight: 8 }} />
+              <Text style={styles.textoGracias}>{datos.gracias}</Text>
+            </View>
+          </View>
+
+        </View>
+      </ScrollView>
     </View>
   );
 }
 
-// 5. ESTILOS PREMIUM UNIFICADOS
+// ESTILOS DE LA PANTALLA
 const styles = StyleSheet.create({
-  fondoGris: { 
-    flex: 1, 
-    backgroundColor: '#F8F9FA' // Gris unificado con el resto de la app
+  contenedor: { flex: 1, backgroundColor: '#F8F9FA' },
+  
+  // Cabecera sin barra de Expo
+  cabecera: { paddingTop: 60, paddingBottom: 20, paddingHorizontal: 20, backgroundColor: 'white' },
+  tituloPantalla: { fontSize: 32, fontWeight: '900', color: '#111827' },
+  subtituloPantalla: { fontSize: 16, color: '#6B7280', marginTop: 5 },
+  
+  // Selector de Idiomas
+  contenedorFiltros: { backgroundColor: 'white', paddingBottom: 15, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
+  chipIdioma: {
+    backgroundColor: '#F3F4F6', paddingHorizontal: 20, paddingVertical: 10,
+    borderRadius: 25, marginRight: 10, justifyContent: 'center', alignItems: 'center'
   },
-  headerContenedor: {
-    paddingHorizontal: 20,
-    marginBottom: 20,
+  chipActivo: { backgroundColor: '#1F2937' },
+  textoChip: { fontWeight: '700', color: '#6B7280', fontSize: 15 },
+  textoChipActivo: { color: 'white' },
+
+  // Tarjeta
+  scrollTarjeta: { padding: 20, paddingBottom: 50 },
+  tarjetaFisica: {
+    backgroundColor: 'white',
+    borderRadius: 24,
+    overflow: 'hidden',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.15, shadowRadius: 20, elevation: 10,
+    borderWidth: 1, borderColor: '#F3F4F6'
   },
-  subtituloHeader: { 
-    fontSize: 16, 
-    color: '#6B7280', 
-    lineHeight: 22 
-  },
-  tarjetaModerna: { 
-    backgroundColor: '#FFFFFF', 
-    borderRadius: 20, 
-    marginHorizontal: 16, 
-    marginBottom: 24, 
-    overflow: 'hidden', 
-    shadowColor: '#000', 
-    shadowOffset: { width: 0, height: 4 }, 
-    shadowOpacity: 0.05, 
-    shadowRadius: 10, 
-    elevation: 3 
-  },
-  imagenTarjeta: { 
-    width: '100%', 
-    height: 180 
-  },
-  infoContenedor: { 
-    padding: 20 
-  },
-  filaTitulo: {
+  bandaAlerta: {
+    backgroundColor: '#DC2626', // Rojo médico/alerta
     flexDirection: 'row',
-    justifyContent: 'space-between', // Separa el título del precio a los extremos
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  tituloTarjeta: { 
-    fontSize: 20, 
-    fontWeight: '800', 
-    color: '#1F2937',
-    flex: 1, // Para que si el texto es muy largo no pise el precio
-  },
-  badgePrecio: {
-    backgroundColor: '#ECFDF5', // Fondo verde muy clarito
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  textoPrecio: { 
-    fontSize: 16, 
-    color: '#10B981', // Verde de la marca SafePlate
-    fontWeight: '900', 
-  },
-  descripcionTarjeta: {
-    fontSize: 14,
-    color: '#6B7280',
-    marginBottom: 20,
-    lineHeight: 20,
-  },
-  botonPrimario: { 
-    flexDirection: 'row',
-    backgroundColor: '#10B981', 
-    paddingVertical: 14, 
-    borderRadius: 12, 
-    alignItems: 'center', 
     justifyContent: 'center',
-    shadowColor: '#10B981',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
+    alignItems: 'center',
+    paddingVertical: 15,
   },
-  textoBoton: { 
-    color: 'white', 
-    fontWeight: 'bold', 
-    fontSize: 16 
-  }
+  textoAlerta: { color: 'white', fontSize: 18, fontWeight: '900', letterSpacing: 2, marginHorizontal: 10 },
+  
+  cuerpoTarjeta: { padding: 25 },
+  tituloTarjeta: { fontSize: 28, fontWeight: '900', color: '#111827', textAlign: 'center', marginBottom: 15 },
+  separador: { height: 2, backgroundColor: '#F3F4F6', width: '50%', alignSelf: 'center', marginBottom: 20 },
+  
+  mensajeTarjeta: { fontSize: 18, color: '#374151', lineHeight: 28, fontWeight: '500' },
+  
+  cajaGracias: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FEF2F2',
+    padding: 15,
+    borderRadius: 16,
+    marginTop: 30
+  },
+  textoGracias: { color: '#DC2626', fontSize: 16, fontWeight: 'bold' }
 });
